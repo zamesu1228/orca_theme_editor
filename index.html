@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>SVG色編集</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="color-inputs">
+  <label>background <input type="color" id="background" value="#29272b" /></label>
+  <label>f_high <input type="color" id="f_high" value="#ffffff" /></label>
+  <label>f_med <input type="color" id="f_med" value="#e47464" /></label>
+  <label>f_low <input type="color" id="f_low" value="#66606b" /></label>
+  <label>f_inv <input type="color" id="f_inv" value="#000000" /></label>
+  <label>b_high <input type="color" id="b_high" value="#000000" /></label>
+  <label>b_med <input type="color" id="b_med" value="#201e21" /></label>
+  <label>b_low <input type="color" id="b_low" value="#322e33" /></label>
+  <label>b_inv <input type="color" id="b_inv" value="#e47464" /></label>
+</div>
+
+<div id="preview-container"></div>
+
+<button onclick="downloadSVG()">EXPORT</button>
+
+<script>
+  const ids = [
+    "background",
+    "f_high", "f_med", "f_low", "f_inv",
+    "b_high", "b_med", "b_low", "b_inv"
+  ];
+
+  ids.forEach(id => {
+    document.getElementById(id).addEventListener("input", updatePreview);
+  });
+
+  // 輝度計算（人間の目の感度を考慮した加重平均）
+  function getBrightness(hex) {
+    const r = parseInt(hex.substr(1, 2), 16);
+    const g = parseInt(hex.substr(3, 2), 16);
+    const b = parseInt(hex.substr(5, 2), 16);
+    return (r * 0.299 + g * 0.587 + b * 0.114);
+  }
+
+  // 背景色に応じてテキスト色のクラスを切り替え
+  function updateTextColor(bgColor) {
+    const brightness = getBrightness(bgColor);
+    if (brightness < 128) {
+      document.body.classList.add('light-text');
+      document.body.classList.remove('dark-text');
+    } else {
+      document.body.classList.add('dark-text');
+      document.body.classList.remove('light-text');
+    }
+  }
+
+  function generateSVGString(colors) {
+    return `
+<svg width="384px" height="256px" xmlns="http://www.w3.org/2000/svg" baseProfile="full" version="1.1" viewBox="0 0 96 64">
+  <rect width="96" height="64" id="background" fill="${colors.background}"></rect>
+  <!-- Foreground -->
+  <circle cx="24" cy="24" r="8" id="f_high" fill="${colors.f_high}"></circle>
+  <circle cx="40" cy="24" r="8" id="f_med" fill="${colors.f_med}"></circle>
+  <circle cx="56" cy="24" r="8" id="f_low" fill="${colors.f_low}"></circle>
+  <circle cx="72" cy="24" r="8" id="f_inv" fill="${colors.f_inv}"></circle>
+  <!-- Background -->
+  <circle cx="24" cy="40" r="8" id="b_high" fill="${colors.b_high}"></circle>
+  <circle cx="40" cy="40" r="8" id="b_med" fill="${colors.b_med}"></circle>
+  <circle cx="56" cy="40" r="8" id="b_low" fill="${colors.b_low}"></circle>
+  <circle cx="72" cy="40" r="8" id="b_inv" fill="${colors.b_inv}"></circle>
+</svg>
+`.trim();
+  }
+
+  function getCurrentColors() {
+    const colors = {};
+    ids.forEach(id => {
+      colors[id] = document.getElementById(id).value;
+    });
+    return colors;
+  }
+
+  function updatePreview() {
+    const colors = getCurrentColors();
+
+    // ページ背景色を背景色ピッカーに合わせて変える
+    document.body.style.backgroundColor = colors.background;
+
+    // 明るさ判定でテキスト色クラス切り替え
+    updateTextColor(colors.background);
+
+    // SVGを更新
+    const svgString = generateSVGString(colors);
+    document.getElementById("preview-container").innerHTML = svgString;
+  }
+
+  function downloadSVG() {
+    const colors = getCurrentColors();
+    const svgString = generateSVGString(colors);
+    const blob = new Blob([svgString], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "custom_image.svg";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  updatePreview();
+
+  // --- ここからドラッグ＆ドロップ機能追加 ---
+
+  // ドラッグオーバー時にデフォルト動作キャンセル（ドロップを可能にする）
+  document.body.addEventListener("dragover", (e) => {
+    e.preventDefault();
+  });
+
+  // ドロップ時の処理
+  document.body.addEventListener("drop", (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.files.length === 0) return;
+    const file = e.dataTransfer.files[0];
+    if (!file.name.match(/\.svg$/i)) {
+      alert("SVGファイルをドロップしてください");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      const text = evt.target.result;
+      parseSVGColors(text);
+    };
+    reader.readAsText(file);
+  });
+
+  // SVGテキストからfill属性の色を読み取り、対応inputにセット
+  function parseSVGColors(svgText) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, "image/svg+xml");
+
+    ids.forEach(id => {
+      const el = doc.getElementById(id);
+      if (el) {
+        const fill = el.getAttribute("fill");
+        if (fill && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(fill)) {
+          document.getElementById(id).value = fill;
+        }
+      }
+    });
+
+    updatePreview();
+  }
+</script>
+
+</body>
+</html>
